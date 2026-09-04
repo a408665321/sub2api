@@ -1,0 +1,11 @@
+# Keep the exact upstream runtime filesystem and replace only the tested,
+# statically-linked Sub2API binary (which embeds the customized frontend).
+ARG UPSTREAM_IMAGE=weishaw/sub2api:0.2.4
+FROM ${UPSTREAM_IMAGE}
+
+COPY --chown=sub2api:sub2api sub2api-photonthinx /app/sub2api
+RUN chmod 0755 /app/sub2api
+
+LABEL org.opencontainers.image.vendor="PhotOn ThinX" \
+      org.opencontainers.image.version="0.2.4-photonthinx.1" \
+      org.opencontainers.image.description="Sub2API v0.2.4 with exclusive Authentik OIDC login"
