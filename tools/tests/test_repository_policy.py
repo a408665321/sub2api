@@ -67,5 +67,45 @@ class ContributionEntryPointTests(unittest.TestCase):
         self.assertIn("LGPL-3.0-or-later", template)
 
 
+class WorkflowPolicyTests(unittest.TestCase):
+    def job_ids(self, relative_path: str) -> set[str]:
+        ids = set()
+        in_jobs = False
+        for line in read(relative_path).splitlines():
+            if line == "jobs:":
+                in_jobs = True
+                continue
+            if in_jobs and line and not line.startswith(" "):
+                break
+            if in_jobs and line.startswith("  ") and not line.startswith("    ") and line.endswith(":"):
+                ids.add(line.strip()[:-1])
+        return ids
+
+    def assert_hardened_workflow(self, relative_path: str) -> str:
+        workflow = read(relative_path)
+        self.assertIn("custom/main", workflow)
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("permissions:", workflow)
+        self.assertIn("contents: read", workflow)
+        self.assertIn("concurrency:", workflow)
+        self.assertIn("timeout-minutes:", workflow)
+        return workflow
+
+    def test_ci_is_scoped_and_has_stable_required_contexts(self):
+        self.assert_hardened_workflow(".github/workflows/backend-ci.yml")
+        self.assertEqual(
+            {"shell", "backend", "frontend", "golangci-lint"},
+            self.job_ids(".github/workflows/backend-ci.yml"),
+        )
+
+    def test_security_scan_is_scoped_and_hardened(self):
+        workflow = self.assert_hardened_workflow(".github/workflows/security-scan.yml")
+        self.assertIn("schedule:", workflow)
+        self.assertEqual(
+            {"backend-security", "frontend-security"},
+            self.job_ids(".github/workflows/security-scan.yml"),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
