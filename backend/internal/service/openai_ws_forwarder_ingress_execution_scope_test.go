@@ -314,6 +314,13 @@ func runOpenAIWSCodexThreadPair(t *testing.T, threadA, threadB string) (serverEr
 	cancelA()
 	if aReadErr == nil {
 		require.Equal(t, "resp_thread_a", gjson.GetBytes(completedA, "response.id").String())
+		if threadA == threadB {
+			preemptCtx, cancelPreempt := context.WithTimeout(context.Background(), 5*time.Second)
+			_, _, aReadErr = connA.Read(preemptCtx)
+			cancelPreempt()
+		}
+	}
+	if aReadErr == nil {
 		require.NoError(t, connA.Close(coderws.StatusNormalClosure, "done"))
 	}
 	require.NoError(t, connB.Close(coderws.StatusNormalClosure, "done"))
