@@ -106,6 +106,32 @@ class WorkflowPolicyTests(unittest.TestCase):
             self.job_ids(".github/workflows/security-scan.yml"),
         )
 
+    def test_release_is_community_only_and_has_least_privilege(self):
+        workflow = read(".github/workflows/release.yml")
+        self.assertNotIn("DOCKERHUB", workflow.upper())
+        self.assertNotIn("TELEGRAM", workflow.upper())
+        self.assertNotIn("pull_request:", workflow)
+        self.assertNotIn("branches:", workflow)
+        self.assertIn("v*-community.*", workflow)
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("contents: read", workflow)
+        self.assertIn("contents: write", workflow)
+        self.assertIn("packages: write", workflow)
+        self.assertIn("custom/main", workflow)
+        self.assertIn("tools/validate_community_release.py", workflow)
+        self.assertIn(".goreleaser.community.yaml", workflow)
+
+    def test_goreleaser_publishes_only_community_ghcr_images(self):
+        config = read(".goreleaser.community.yaml")
+        self.assertIn("ghcr.io/a408665321/sub2api", config)
+        self.assertIn("community-latest", config)
+        self.assertNotIn("docker.io", config.casefold())
+        self.assertNotIn("dockerhub", config.casefold())
+        self.assertNotIn("telegram", config.casefold())
+        for line in config.splitlines():
+            if "sub2api:" in line and ("image_template" in line or "name_template" in line or line.lstrip().startswith("- ghcr")):
+                self.assertIn("ghcr.io/a408665321/sub2api", line)
+
 
 if __name__ == "__main__":
     unittest.main()
