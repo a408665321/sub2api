@@ -1,0 +1,14 @@
+Sub2API Community Distribution
+
+This repository is an unofficial community-maintained distribution derived
+from Wei-Shaw/sub2api:
+
+    https://github.com/Wei-Shaw/sub2api
+
+The upstream project includes work Copyright (c) 2026 Wesley Liddick and work
+by other contributors recorded in the Git history. Upstream attribution and
+history are preserved. Modifications are copyrighted by their respective contributors.
+
+The project is distributed under the GNU Lesser General Public License,
+version 3 or (at your option) any later version (LGPL-3.0-or-later). See the
+LICENSE file for the complete license text.

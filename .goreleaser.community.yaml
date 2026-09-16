@@ -1,0 +1,111 @@
+version: 2
+
+project_name: sub2api
+
+builds:
+  - id: sub2api
+    dir: backend
+    main: ./cmd/server
+    binary: sub2api
+    flags:
+      - -tags=embed
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.Commit={{ .Commit }}
+      - -X main.Date={{ .Date }}
+      - -X main.BuildType=community
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE*
+      - NOTICE
+      - README*
+      - deploy/*
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  use: github-native
+
+dockers:
+  - id: ghcr-amd64
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - ghcr.io/a408665321/sub2api:{{ .Version }}-amd64
+    dockerfile: Dockerfile.goreleaser
+    use: buildx
+    extra_files:
+      - deploy/docker-entrypoint.sh
+      - backend/resources
+    build_flag_templates:
+      - --platform=linux/amd64
+      - --label=org.opencontainers.image.source=https://github.com/a408665321/sub2api
+      - --label=org.opencontainers.image.revision={{ .Commit }}
+      - --label=org.opencontainers.image.version={{ .Version }}
+      - --label=org.opencontainers.image.licenses=LGPL-3.0-or-later
+
+  - id: ghcr-arm64
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - ghcr.io/a408665321/sub2api:{{ .Version }}-arm64
+    dockerfile: Dockerfile.goreleaser
+    use: buildx
+    extra_files:
+      - deploy/docker-entrypoint.sh
+      - backend/resources
+    build_flag_templates:
+      - --platform=linux/arm64
+      - --label=org.opencontainers.image.source=https://github.com/a408665321/sub2api
+      - --label=org.opencontainers.image.revision={{ .Commit }}
+      - --label=org.opencontainers.image.version={{ .Version }}
+      - --label=org.opencontainers.image.licenses=LGPL-3.0-or-later
+
+docker_manifests:
+  - name_template: ghcr.io/a408665321/sub2api:{{ .Version }}
+    image_templates:
+      - ghcr.io/a408665321/sub2api:{{ .Version }}-amd64
+      - ghcr.io/a408665321/sub2api:{{ .Version }}-arm64
+  - name_template: ghcr.io/a408665321/sub2api:community-latest
+    image_templates:
+      - ghcr.io/a408665321/sub2api:{{ .Version }}-amd64
+      - ghcr.io/a408665321/sub2api:{{ .Version }}-arm64
+
+release:
+  github:
+    owner: a408665321
+    name: sub2api
+  draft: false
+  prerelease: false
+  name_template: "Sub2API {{ .Tag }}"
+  footer: |
+    ## Container image
+
+    ```bash
+    docker pull ghcr.io/a408665321/sub2api:{{ .Version }}
+    ```
+
+    Source: https://github.com/a408665321/sub2api/tree/custom/main
