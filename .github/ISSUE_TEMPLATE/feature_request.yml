@@ -1,0 +1,43 @@
+name: Feature request
+description: Propose a change to the community-maintained distribution
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the user need or operational problem, not only a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: true
+  - type: dropdown
+    id: branch_impact
+    attributes:
+      label: Branch impact
+      description: Where should this change be maintained?
+      options:
+        - custom/main only
+        - Suitable for upstream and custom/main
+        - Unsure
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Data safety
+      options:
+        - label: This request contains no credentials, tokens, private URLs, or personal data.
+          required: true

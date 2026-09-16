@@ -1,0 +1,78 @@
+name: Bug report
+description: Report a reproducible defect in the community-maintained branch
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: Remove credentials, tokens, personal data, and private URLs from all diagnostics.
+  - type: input
+    id: version
+    attributes:
+      label: Version or tag
+      placeholder: v0.2.5-community.1 or commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: branch
+    attributes:
+      label: Branch
+      options:
+        - custom/main
+        - main (upstream mirror)
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment method
+      options:
+        - Docker / Docker Compose
+        - Binary release
+        - Source build
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, architecture, database, browser, and other relevant versions.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: Provide the smallest repeatable sequence.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized diagnostics
+      description: Paste relevant logs or traces after removing all secrets and personal data.
+      render: shell
+    validations:
+      required: true
+  - type: checkboxes
+    id: sanitization
+    attributes:
+      label: Data safety
+      options:
+        - label: I removed credentials, tokens, private URLs, and personal data.
+          required: true

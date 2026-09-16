@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and support
+    url: https://github.com/a408665321/sub2api/discussions
+    about: Ask configuration, deployment, and usage questions in Discussions.
+  - name: Upstream project
+    url: https://github.com/Wei-Shaw/sub2api
+    about: Check whether an issue also applies to the upstream project.
