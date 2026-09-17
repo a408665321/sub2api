@@ -184,6 +184,7 @@ type openAIWSStateStoreTimeoutProbeCache struct {
 	setDeadlineDelta  time.Duration
 	getDeadlineDelta  time.Duration
 	delDeadlineDelta  time.Duration
+	setFn             func(context.Context, int64, string, int64, time.Duration) error
 }
 
 func (c *openAIWSStateStoreTimeoutProbeCache) GetSessionAccountID(ctx context.Context, _ int64, _ string) (int64, error) {
@@ -194,10 +195,13 @@ func (c *openAIWSStateStoreTimeoutProbeCache) GetSessionAccountID(ctx context.Co
 	return 123, nil
 }
 
-func (c *openAIWSStateStoreTimeoutProbeCache) SetSessionAccountID(ctx context.Context, _ int64, _ string, _ int64, _ time.Duration) error {
+func (c *openAIWSStateStoreTimeoutProbeCache) SetSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error {
 	if deadline, ok := ctx.Deadline(); ok {
 		c.setHasDeadline = true
 		c.setDeadlineDelta = time.Until(deadline)
+	}
+	if c.setFn != nil {
+		return c.setFn(ctx, groupID, sessionHash, accountID, ttl)
 	}
 	return errors.New("set failed")
 }
@@ -274,4 +278,47 @@ func TestWithOpenAIWSStateStoreRedisTimeout_WithParentContext(t *testing.T) {
 	require.NotNil(t, ctx)
 	_, ok := ctx.Deadline()
 	require.True(t, ok, "应附加短超时")
+}
+
+func TestOpenAIWSStateStore_BindResponseAccountPersistsAfterParentCancellation(t *testing.T) {
+	writes := make(map[string]int64)
+	probe := &openAIWSStateStoreTimeoutProbeCache{
+		setFn: func(ctx context.Context, _ int64, key string, value int64, _ time.Duration) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			writes[key] = value
+			return nil
+		},
+	}
+	store := NewOpenAIWSStateStore(probe)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := store.BindResponseAccount(ctx, 5, "resp_canceled_parent", 11, time.Minute)
+
+	require.NoError(t, err)
+	require.Equal(t, int64(11), writes[openAIWSResponseAccountCacheKey("resp_canceled_parent")])
+}
+
+func TestOpenAIWSStateStore_BindHTTPResponseOwnerPersistsAfterParentCancellation(t *testing.T) {
+	writes := make(map[string]int64)
+	probe := &openAIWSStateStoreTimeoutProbeCache{
+		setFn: func(ctx context.Context, _ int64, key string, value int64, _ time.Duration) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			writes[key] = value
+			return nil
+		},
+	}
+	store := NewOpenAIWSStateStore(probe)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := store.BindHTTPResponseOwner(ctx, 5, "resp_owner_canceled_parent", 21, 31, time.Minute)
+
+	require.NoError(t, err)
+	require.Equal(t, int64(21), writes[openAIHTTPResponseOwnerCacheKey(openAIHTTPResponseOwnerUserPrefix, "resp_owner_canceled_parent")])
+	require.Equal(t, int64(31), writes[openAIHTTPResponseOwnerCacheKey(openAIHTTPResponseOwnerKeyPrefix, "resp_owner_canceled_parent")])
 }
