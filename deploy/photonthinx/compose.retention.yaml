@@ -1,0 +1,7 @@
+# For deployments with effective retention <= 400 days. For longer settings,
+# generate an override with retention.py; see docs/photonthinx-maintenance.md.
+services:
+  sub2api:
+    environment:
+      DASHBOARD_AGGREGATION_RETENTION_USAGE_LOGS_DAYS: "400"
+      DASHBOARD_AGGREGATION_RETENTION_USAGE_BILLING_DEDUP_DAYS: "400"
