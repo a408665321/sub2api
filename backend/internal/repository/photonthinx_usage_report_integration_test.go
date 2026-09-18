@@ -125,4 +125,31 @@ func TestPhotonthinxMonthlyAggregation(t *testing.T) {
 	p, err = repo.PhotonthinxMonthly(ctx, q)
 	require.NoError(t, err)
 	require.Equal(t, first.ID, p.Items[0].UserID)
+	// Historical rows without cost snapshots use the existing fallback formula.
+	_, err = tx.ExecContext(ctx, "UPDATE usage_logs SET account_stats_cost=NULL, account_rate_multiplier=NULL WHERE user_id=$1", first.ID)
+	require.NoError(t, err)
+	p, err = repo.PhotonthinxMonthly(ctx, q)
+	require.NoError(t, err)
+	require.InDelta(t, 1.0, p.Items[0].AccountCost, 1e-12)
+}
+
+func TestPhotonthinxEmptyRetainedHistory(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	_, err := tx.ExecContext(ctx, "DELETE FROM usage_logs")
+	require.NoError(t, err)
+	repo := newUsageLogRepositoryWithSQL(tx.Client(), tx)
+	q, err := report.Parse(url.Values{"month": {"2024-02"}}, time.Now(), false)
+	require.NoError(t, err)
+	monthly, err := repo.PhotonthinxMonthly(ctx, q)
+	require.NoError(t, err)
+	require.Empty(t, monthly.Items)
+	require.Zero(t, monthly.Total)
+	require.Nil(t, monthly.AvailableFrom)
+	require.Equal(t, report.Summary{}, monthly.Summary)
+	require.True(t, monthly.HistoryIncomplete)
+	trend, err := repo.PhotonthinxTrend(ctx, q)
+	require.NoError(t, err)
+	require.Empty(t, trend.Points)
+	require.Nil(t, trend.AvailableFrom)
 }

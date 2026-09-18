@@ -5,7 +5,7 @@
         <label for="photonthinx-month" class="mb-1 block text-sm font-medium">{{ text.month }}</label>
         <div class="flex items-center gap-2">
           <button class="btn btn-secondary" data-testid="previous-month" :disabled="month <= '2000-01'" :aria-label="text.previous" @click="month = shiftMonth(month, -1)">‹</button>
-          <input id="photonthinx-month" v-model="month" type="month" min="2000-01" :max="currentMonth" class="input w-auto" />
+          <input id="photonthinx-month" :value="month" type="month" min="2000-01" :max="currentMonth" class="input w-auto" @change="changeMonth" />
           <button class="btn btn-secondary" :disabled="month >= currentMonth" :aria-label="text.next" @click="month = shiftMonth(month, 1)">›</button>
         </div>
       </div>
@@ -107,6 +107,12 @@ const pages = computed(() => Math.max(1, Math.ceil((report.value?.total ?? 0) / 
 const summaryKeys = ['actual_cost', 'account_cost', 'requests', 'total_tokens', 'active_users'] as const
 const tokenKeys = ['requests', 'input_tokens', 'output_tokens', 'cache_creation_tokens', 'cache_read_tokens', 'total_tokens'] as const
 let controller: AbortController | undefined
+function changeMonth(event: Event) {
+  const input = event.target as HTMLInputElement
+  const value = input.value
+  if (/^\d{4}-(0[1-9]|1[0-2])$/.test(value) && value >= '2000-01' && value <= currentMonth) month.value = value
+  else input.value = month.value
+}
 function applySearch() { search.value = searchInput.value.trim(); page.value = 1 }
 function sort(key: ReportMetric) {
   sortOrder.value = sortBy.value === key && sortOrder.value === 'desc' ? 'asc' : 'desc'

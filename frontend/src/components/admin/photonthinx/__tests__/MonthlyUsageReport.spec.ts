@@ -60,6 +60,17 @@ describe('Photonthinx monthly report', () => {
     await w.get('[data-testid="previous-month"]').trigger('click'); await flushPromises()
     expect(w.text()).toContain('没有匹配的用量记录'); w.unmount()
   })
+  it('preserves the last valid month when the picker is cleared or outside its bounds', async () => {
+    const w = render(); await flushPromises()
+    const picker = w.get('input[type="month"]')
+    const initial = (picker.element as HTMLInputElement).value
+    for (const invalid of ['', '1999-12', '2099-01']) {
+      await picker.setValue(invalid); await flushPromises()
+      expect((picker.element as HTMLInputElement).value).toBe(initial)
+    }
+    expect(monthly).toHaveBeenCalledTimes(1)
+    w.unmount()
+  })
 })
 
 describe('Photonthinx report trends', () => {
