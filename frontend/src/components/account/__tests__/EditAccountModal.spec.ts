@@ -1711,4 +1711,36 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
     expect(updateAccountMock).not.toHaveBeenCalled()
     wrapper.unmount()
   })
+
+  it('新开启账号默认观察模式并保存窗口策略与保护期', async () => {
+	const account = buildOpenAIOAuthParentAccount()
+	updateAccountMock.mockResolvedValue(account)
+	const wrapper = mountModal(account)
+
+	await wrapper.get('[data-testid="auto-reset-credit-enabled"]').trigger('click')
+	expect((wrapper.get('[data-testid="auto-reset-policy-mode"]').element as HTMLSelectElement).value).toBe('observe')
+	await wrapper.get('[data-testid="auto-reset-policy-5h-enabled"]').trigger('click')
+	await wrapper.get('[data-testid="auto-reset-policy-guard-days"]').setValue('2')
+	await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+	const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
+	expect(extra.photonthinx_auto_reset_credit_policy).toEqual({
+	  mode: 'observe',
+	  reset_5h_enabled: false,
+	  reset_7d_enabled: true,
+	  seven_day_guard_days: 2
+	})
+	expect(extra).not.toHaveProperty('photonthinx_codex_window_presence')
+	expect(extra).not.toHaveProperty('photonthinx_auto_reset_observation_state')
+	wrapper.unmount()
+  })
+
+  it('旧的已启用账号没有策略对象时显示执行模式', () => {
+	const account = buildOpenAIOAuthParentAccount()
+	account.extra = { auto_reset_credit_enabled: true }
+	const wrapper = mountModal(account)
+
+	expect((wrapper.get('[data-testid="auto-reset-policy-mode"]').element as HTMLSelectElement).value).toBe('enforce')
+	wrapper.unmount()
+  })
 })

@@ -928,10 +928,45 @@ export default {
 	  autoResetCredit: {
 	    title: 'Automatically use reset credits',
 	    hint: 'Uses the earliest-expiring available credit only when actual usage reaches a threshold. Off by default; the account remains paused if no credit is available or reset fails.',
+	    mode: 'Run mode',
+	    observe: 'Observe (do not consume)',
+	    enforce: 'Enforce (consume credits)',
+	    reset5hEnabled: '5h automatic reset',
+	    reset7dEnabled: '7d automatic reset',
+	    guardDays: '7d natural-reset guard (days)',
 	    threshold5h: '5h auto-reset threshold (%)',
 	    threshold7d: '7d auto-reset threshold (%)',
 	    thresholdHint: 'Each window is evaluated independently. Enter 0.1–100; both default to 100.',
-	    thresholdInvalid: 'Automatic reset-credit thresholds must be between 0.1% and 100%.'
+	    thresholdInvalid: 'Automatic reset-credit thresholds must be between 0.1% and 100%.',
+	    guardInvalid: 'The 7d natural-reset guard must be between 0 and 7 days.',
+	    summary: '{mode}; 5h: {fiveHour}; 7d: {sevenDay}',
+	    summaryReset: 'consume at {threshold}%',
+	    summaryNeverReset: 'pause at {threshold} and never consume',
+	    summaryGuard: 'trigger at {threshold}%; wait when natural reset is within {days} days (pause at {pause})',
+	    globalPauseThreshold: 'global threshold',
+	    notAvailable: 'N/A',
+	    windowPresent: 'window present',
+	    windowAbsent: 'window absent',
+	    windowUnknown: 'window not identified yet',
+	    latestDecision: 'Latest: {decision} / {reason} ({time})',
+	    enforceConfirmTitle: 'Confirm real credit consumption',
+	    enforceConfirmMessage: 'Eligible decisions will consume real reset credits after this change. Current policy: {summary}',
+	    decisions: {
+	      would_bypass_pause: 'would bypass pause',
+	      would_reset: 'would consume a credit',
+	      skipped: 'skipped'
+	    },
+	    reasons: {
+	      threshold_reached: 'reset threshold reached',
+	      eligible_credit: 'complete credit available',
+	      window_disabled: 'credit use disabled for this window',
+	      window_absent: 'window absent upstream',
+	      natural_reset_guard: 'inside natural-reset guard',
+	      no_credit: 'no credit available',
+	      invalid_window_signal: 'invalid window signal',
+	      credit_details_incomplete: 'credit details incomplete',
+	      credit_details_invalid: 'credit details invalid'
+	    }
 	  },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {

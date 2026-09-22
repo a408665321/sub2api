@@ -525,16 +525,37 @@ func shouldAutoPauseOpenAIAccountByQuota(ctx context.Context, account *Account) 
 	// 自动用卡有独立阈值：达到消费阈值时必须先退出调度；仅达到普通暂停阈值时，
 	// 只有新鲜状态明确存在可用卡才继续放行到消费阈值。
 	if config := ResolveOpenAIAutoResetCreditConfig(account); config.Enabled {
+		policy := resolvePhotonthinxAutoResetCreditPolicy(account.Extra)
 		now := time.Now()
+		if policy.Configured && !photonthinxCodexWindowPresenceComplete(account.Extra) {
+			notifyOpenAIAutoReset(account.ID)
+			return true, openAIQuotaAutoPauseDecision{window: "unknown", reason: "quota_auto_reset_policy_window_unknown"}
+		}
 		utilization5h, has5h := resolveOpenAIQuotaUtilization(account.Extra, "5h", now)
 		utilization7d, has7d := resolveOpenAIQuotaUtilization(account.Extra, "7d", now)
-		if has5h && utilization5h >= config.Threshold5h {
+		reached5h := has5h && utilization5h >= config.Threshold5h
+		reached7d := has7d && utilization7d >= config.Threshold7d
+		fiveHourAllowed, fiveHourReason := policy.fiveHourResetEligibility(account.Extra, now)
+		if reached5h && fiveHourAllowed {
 			notifyOpenAIAutoReset(account.ID)
 			return true, openAIQuotaAutoPauseDecision{window: "5h", threshold: config.Threshold5h, utilization: utilization5h, reason: "quota_auto_reset_pending_5h"}
 		}
-		if has7d && utilization7d >= config.Threshold7d {
+		if reached7d && policy.allowsSevenDayReset(account.Extra, now) {
 			notifyOpenAIAutoReset(account.ID)
 			return true, openAIQuotaAutoPauseDecision{window: "7d", threshold: config.Threshold7d, utilization: utilization7d, reason: "quota_auto_reset_pending_7d"}
+		}
+		if reached5h && !fiveHourAllowed {
+			reason := "quota_auto_reset_policy_5h_invalid"
+			if fiveHourReason == "window_disabled" {
+				reason = "quota_auto_reset_policy_5h_disabled"
+			}
+			return true, openAIQuotaAutoPauseDecision{window: "5h", threshold: config.Threshold5h, utilization: utilization5h, reason: reason}
+		}
+		if reached7d && !policy.Reset7dEnabled {
+			return true, openAIQuotaAutoPauseDecision{window: "7d", threshold: config.Threshold7d, utilization: utilization7d, reason: "quota_auto_reset_policy_7d_disabled"}
+		}
+		if reached7d {
+			return true, openAIQuotaAutoPauseDecision{window: "7d", threshold: config.Threshold7d, utilization: utilization7d, reason: "quota_auto_reset_policy_7d_guard"}
 		}
 
 		disabled5h := resolveAccountExtraBool(account.Extra, "auto_pause_5h_disabled")
@@ -543,6 +564,20 @@ func shouldAutoPauseOpenAIAccountByQuota(ctx context.Context, account *Account) 
 		pauseReached5h := !disabled5h && pause5h > 0 && has5h && utilization5h >= pause5h
 		pauseReached7d := !disabled7d && pause7d > 0 && has7d && utilization7d >= pause7d
 		if pauseReached5h || pauseReached7d {
+			if pauseReached5h && !fiveHourAllowed {
+				reason := "quota_auto_reset_policy_5h_invalid"
+				if fiveHourReason == "window_disabled" {
+					reason = "quota_auto_reset_policy_5h_disabled"
+				}
+				return true, openAIQuotaAutoPauseDecision{window: "5h", threshold: pause5h, utilization: utilization5h, reason: reason}
+			}
+			if pauseReached7d && !policy.allowsSevenDayReset(account.Extra, now) {
+				reason := "quota_auto_reset_policy_7d_guard"
+				if !policy.Reset7dEnabled {
+					reason = "quota_auto_reset_policy_7d_disabled"
+				}
+				return true, openAIQuotaAutoPauseDecision{window: "7d", threshold: pause7d, utilization: utilization7d, reason: reason}
+			}
 			state := openAIAutoResetStateFromExtra(account.Extra)
 			if state != nil && state.Status == OpenAIAutoResetStatusAvailable && state.AvailableCount > 0 && !openAIAutoResetStateStale(state, now) {
 				return false, openAIQuotaAutoPauseDecision{}
@@ -668,6 +703,9 @@ func resolveAccountExtraNumber(extra map[string]any, keys ...string) (float64, b
 // without this check an old used_percent would keep the account paused forever even
 // after the real window reset.
 func resolveOpenAIQuotaUtilization(extra map[string]any, window string, now time.Time) (float64, bool) {
+	if present, known := photonthinxCodexWindowPresent(extra, window); known && !present {
+		return 0, false
+	}
 	usedPercent := readOpenAIQuotaUsedPercent(extra, window)
 	if usedPercent <= 0 {
 		return 0, false

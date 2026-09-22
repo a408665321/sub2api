@@ -1110,6 +1110,7 @@ func buildCodexUsageExtraUpdates(snapshot *OpenAICodexUsageSnapshot, fallbackNow
 			updates["codex_7d_reset_at"] = *reset7dAt
 		}
 	}
+	updates[photonthinxCodexWindowPresenceExtraKey] = buildPhotonthinxCodexWindowPresence(snapshot)
 
 	return updates
 }

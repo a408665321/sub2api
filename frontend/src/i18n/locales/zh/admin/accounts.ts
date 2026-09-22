@@ -1029,10 +1029,45 @@ export default {
 	  autoResetCredit: {
 	    title: '自动使用重置卡',
 	    hint: '仅在实际用量达到阈值时使用最早到期的可用卡；默认关闭。无卡或失败时账号保持暂停。',
+	    mode: '运行模式',
+	    observe: '观察（不实际用卡）',
+	    enforce: '执行（实际用卡）',
+	    reset5hEnabled: '5h 自动用卡',
+	    reset7dEnabled: '7d 自动用卡',
+	    guardDays: '7d 自然重置保护期（天）',
 	    threshold5h: '5h 自动用卡阈值(%)',
 	    threshold7d: '7d 自动用卡阈值(%)',
 	    thresholdHint: '两个窗口独立判断，任一达到自身阈值即触发。可填写 0.1–100，默认均为 100。',
-	    thresholdInvalid: '自动使用重置卡阈值必须在 0.1% 到 100% 之间。'
+	    thresholdInvalid: '自动使用重置卡阈值必须在 0.1% 到 100% 之间。',
+	    guardInvalid: '7d 自然重置保护期必须在 0 到 7 天之间。',
+	    summary: '{mode}；5h：{fiveHour}；7d：{sevenDay}',
+	    summaryReset: '达到 {threshold}% 时用卡',
+	    summaryNeverReset: '在 {threshold} 暂停且不用卡',
+	    summaryGuard: '达到 {threshold}% 时触发，距自然恢复不超过 {days} 天则等待（暂停线 {pause}）',
+	    globalPauseThreshold: '全局阈值',
+	    notAvailable: '无',
+	    windowPresent: '窗口存在',
+	    windowAbsent: '窗口不存在',
+	    windowUnknown: '窗口尚未识别',
+	    latestDecision: '最近：{decision} / {reason}（{time}）',
+	    enforceConfirmTitle: '确认启用实际用卡',
+	    enforceConfirmMessage: '切换后满足策略时会真实消耗重置卡。当前策略：{summary}',
+	    decisions: {
+	      would_bypass_pause: '将越过暂停线',
+	      would_reset: '将使用重置卡',
+	      skipped: '已跳过'
+	    },
+	    reasons: {
+	      threshold_reached: '达到用卡阈值',
+	      eligible_credit: '存在完整可用卡',
+	      window_disabled: '该窗口已禁用用卡',
+	      window_absent: '上游不存在该窗口',
+	      natural_reset_guard: '已进入自然重置保护期',
+	      no_credit: '没有可用卡',
+	      invalid_window_signal: '窗口信号无效',
+	      credit_details_incomplete: '卡详情不完整',
+	      credit_details_invalid: '卡详情无效'
+	    }
 	  },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {

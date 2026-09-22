@@ -60,11 +60,15 @@ func normalizeOpenAIAutoResetCreditExtra(platform, accountType string, isShadow 
 	}
 	normalized := cloneOpenAIAutoResetExtra(extra)
 	delete(normalized, OpenAIAutoResetCreditStateExtraKey)
+	if err := normalizePhotonthinxAutoResetCreditPolicyExtra(platform, accountType, isShadow, normalized); err != nil {
+		return nil, err
+	}
 
 	_, hasEnabled := normalized[OpenAIAutoResetCreditEnabledExtraKey]
 	_, has5h := normalized[OpenAIAutoResetCredit5hThresholdExtraKey]
 	_, has7d := normalized[OpenAIAutoResetCredit7dThresholdExtraKey]
-	if !hasEnabled && !has5h && !has7d {
+	_, hasPhotonthinxPolicy := normalized[photonthinxAutoResetCreditPolicyExtraKey]
+	if !hasEnabled && !has5h && !has7d && !hasPhotonthinxPolicy {
 		return normalized, nil
 	}
 	if platform != PlatformOpenAI || accountType != AccountTypeOAuth || isShadow {
@@ -103,6 +107,7 @@ func stripOpenAIAutoResetCreditManagedExtra(extra map[string]any, stripConfig bo
 		return nil
 	}
 	delete(extra, OpenAIAutoResetCreditStateExtraKey)
+	stripPhotonthinxAutoResetCreditManagedExtra(extra, stripConfig)
 	if stripConfig {
 		delete(extra, OpenAIAutoResetCreditEnabledExtraKey)
 		delete(extra, OpenAIAutoResetCredit5hThresholdExtraKey)

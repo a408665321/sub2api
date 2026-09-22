@@ -1195,7 +1195,32 @@ export interface OpenCodeGoUsageSettings {
   interval_minutes: number
   /** Trailing quiet period after the latest model request (minutes). */
   debounce_minutes: number
+export interface PhotonthinxAutoResetCreditPolicy {
+  mode: 'observe' | 'enforce'
+  reset_5h_enabled: boolean
+  reset_7d_enabled: boolean
+  seven_day_guard_days: number
 }
+
+export interface PhotonthinxCodexWindowPresence {
+  [window: string]: { present: boolean; window_minutes?: number }
+}
+
+export interface PhotonthinxAutoResetObservationDecision {
+  mode?: 'observe' | 'enforce'
+  decision?: string
+  reason?: string
+  evaluated_at?: string
+  utilization?: number
+  threshold?: number
+  available_count?: number
+  reset_at?: string
+  remaining_seconds?: number
+  decision_key?: string
+}
+
+export interface PhotonthinxAutoResetObservationState {
+  windows?: Record<string, PhotonthinxAutoResetObservationDecision>}
 
 export interface Account {
   id: number
@@ -1230,6 +1255,9 @@ export interface Account {
     auto_reset_credit_enabled?: boolean
     auto_reset_credit_5h_threshold?: number
     auto_reset_credit_7d_threshold?: number
+	photonthinx_auto_reset_credit_policy?: PhotonthinxAutoResetCreditPolicy
+	photonthinx_codex_window_presence?: PhotonthinxCodexWindowPresence
+	photonthinx_auto_reset_observation_state?: PhotonthinxAutoResetObservationState
     codex_auto_reset_credit_state?: {
       status?: 'checking' | 'available' | 'resetting' | 'success' | 'no_credit' | 'failed'
       trigger_window?: string

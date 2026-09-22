@@ -2536,65 +2536,27 @@
         </div>
       </div>
 
-      <div
+      <PhotonthinxOpenAIAutoResetPolicy
         v-if="account?.platform === 'openai' && account?.type === 'oauth' && !isSparkShadow"
-        class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600"
-        data-testid="auto-reset-credit-settings"
-      >
-        <div class="flex items-center justify-between gap-4">
-          <div class="min-w-0">
-            <label class="input-label mb-0">{{ t('admin.accounts.autoResetCredit.title') }}</label>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.autoResetCredit.hint') }}
-            </p>
-          </div>
-          <button
-            type="button"
-            data-testid="auto-reset-credit-enabled"
-            @click="autoResetCreditEnabled = !autoResetCreditEnabled"
-            :class="[
-              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-              autoResetCreditEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-            ]"
-          >
-            <span
-              :class="[
-                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                autoResetCreditEnabled ? 'translate-x-5' : 'translate-x-0'
-              ]"
-            />
-          </button>
-        </div>
-        <div class="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label class="input-label">{{ t('admin.accounts.autoResetCredit.threshold5h') }}</label>
-            <input
-              v-model.number="autoResetCredit5hThreshold"
-              type="number"
-              min="0.1"
-              max="100"
-              step="0.1"
-              class="input"
-              :disabled="!autoResetCreditEnabled"
-              data-testid="auto-reset-credit-5h-threshold"
-            />
-          </div>
-          <div>
-            <label class="input-label">{{ t('admin.accounts.autoResetCredit.threshold7d') }}</label>
-            <input
-              v-model.number="autoResetCredit7dThreshold"
-              type="number"
-              min="0.1"
-              max="100"
-              step="0.1"
-              class="input"
-              :disabled="!autoResetCreditEnabled"
-              data-testid="auto-reset-credit-7d-threshold"
-            />
-          </div>
-        </div>
-        <p class="input-hint">{{ t('admin.accounts.autoResetCredit.thresholdHint') }}</p>
-      </div>
+        :enabled="autoResetCreditEnabled"
+        :threshold5h="autoResetCredit5hThreshold"
+        :threshold7d="autoResetCredit7dThreshold"
+        :mode="autoResetCreditPolicyMode"
+        :reset5h-enabled="autoResetCreditPolicy5hEnabled"
+        :reset7d-enabled="autoResetCreditPolicy7dEnabled"
+        :guard-days="autoResetCreditPolicyGuardDays"
+        :auto-pause5h-threshold="autoPause5hThreshold"
+        :auto-pause7d-threshold="autoPause7dThreshold"
+        :presence="autoResetCreditWindowPresence"
+        :observation-state="autoResetCreditObservationState"
+        @update:enabled="setAutoResetCreditEnabled"
+        @update:threshold5h="autoResetCredit5hThreshold = $event"
+        @update:threshold7d="autoResetCredit7dThreshold = $event"
+        @update:mode="setAutoResetCreditPolicyMode"
+        @update:reset5h-enabled="setAutoResetCreditPolicy5hEnabled"
+        @update:reset7d-enabled="setAutoResetCreditPolicy7dEnabled"
+        @update:guard-days="setAutoResetCreditPolicyGuardDays"
+      />
 
       <!-- 配额控制 (Anthropic OAuth/SetupToken: 亲和 + 窗口费用 + 会话 + RPM 等) -->
       <div
@@ -3124,7 +3086,9 @@ import type {
   GrokMediaEligibilityState,
   OpenCodeGoUsageState,
   OpenCodeGoUsageWindow
-} from '@/types'
+  PhotonthinxAutoResetCreditPolicy,
+  PhotonthinxCodexWindowPresence,
+  PhotonthinxAutoResetObservationState} from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
@@ -3142,6 +3106,7 @@ import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import OpenCodeGoProtocolRulesEditor from '@/components/account/OpenCodeGoProtocolRulesEditor.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
+import PhotonthinxOpenAIAutoResetPolicy from '@/components/account/PhotonthinxOpenAIAutoResetPolicy.vue'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
@@ -3618,6 +3583,38 @@ const autoPause7dDisabled = ref(false)
 const autoResetCreditEnabled = ref(false)
 const autoResetCredit5hThreshold = ref(100)
 const autoResetCredit7dThreshold = ref(100)
+const autoResetCreditPolicyMode = ref<'observe' | 'enforce'>('observe')
+const autoResetCreditPolicy5hEnabled = ref(true)
+const autoResetCreditPolicy7dEnabled = ref(true)
+const autoResetCreditPolicyGuardDays = ref(0)
+const autoResetCreditPolicyPresent = ref(false)
+const autoResetCreditPolicyDirty = ref(false)
+const autoResetCreditWindowPresence = ref<PhotonthinxCodexWindowPresence>()
+const autoResetCreditObservationState = ref<PhotonthinxAutoResetObservationState>()
+
+const setAutoResetCreditEnabled = (enabled: boolean) => {
+  if (enabled && !autoResetCreditEnabled.value && !autoResetCreditPolicyPresent.value) {
+    autoResetCreditPolicyMode.value = 'observe'
+    autoResetCreditPolicyDirty.value = true
+  }
+  autoResetCreditEnabled.value = enabled
+}
+const setAutoResetCreditPolicyMode = (mode: 'observe' | 'enforce') => {
+  autoResetCreditPolicyMode.value = mode
+  autoResetCreditPolicyDirty.value = true
+}
+const setAutoResetCreditPolicy5hEnabled = (enabled: boolean) => {
+  autoResetCreditPolicy5hEnabled.value = enabled
+  autoResetCreditPolicyDirty.value = true
+}
+const setAutoResetCreditPolicy7dEnabled = (enabled: boolean) => {
+  autoResetCreditPolicy7dEnabled.value = enabled
+  autoResetCreditPolicyDirty.value = true
+}
+const setAutoResetCreditPolicyGuardDays = (days: number) => {
+  autoResetCreditPolicyGuardDays.value = days
+  autoResetCreditPolicyDirty.value = true
+}
 const upstreamBillingAutoProbeEnabled = ref(false)
 const upstreamBillingRateSyncEnabled = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
@@ -4164,6 +4161,21 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 		typeof extra?.auto_reset_credit_5h_threshold === 'number' ? extra.auto_reset_credit_5h_threshold * 100 : 100
 	autoResetCredit7dThreshold.value =
 		typeof extra?.auto_reset_credit_7d_threshold === 'number' ? extra.auto_reset_credit_7d_threshold * 100 : 100
+	const rawAutoResetPolicyValue = extra?.photonthinx_auto_reset_credit_policy
+	const rawAutoResetPolicy = rawAutoResetPolicyValue && typeof rawAutoResetPolicyValue === 'object'
+		? rawAutoResetPolicyValue as PhotonthinxAutoResetCreditPolicy
+		: undefined
+	autoResetCreditPolicyPresent.value = !!rawAutoResetPolicy
+	autoResetCreditPolicyDirty.value = false
+	autoResetCreditPolicyMode.value = rawAutoResetPolicy
+		? rawAutoResetPolicy.mode === 'observe' ? 'observe' : 'enforce'
+		: autoResetCreditEnabled.value ? 'enforce' : 'observe'
+	autoResetCreditPolicy5hEnabled.value = rawAutoResetPolicy?.reset_5h_enabled !== false
+	autoResetCreditPolicy7dEnabled.value = rawAutoResetPolicy?.reset_7d_enabled !== false
+	autoResetCreditPolicyGuardDays.value =
+		typeof rawAutoResetPolicy?.seven_day_guard_days === 'number' ? rawAutoResetPolicy.seven_day_guard_days : 0
+	autoResetCreditWindowPresence.value = extra?.photonthinx_codex_window_presence as PhotonthinxCodexWindowPresence | undefined
+	autoResetCreditObservationState.value = extra?.photonthinx_auto_reset_observation_state as PhotonthinxAutoResetObservationState | undefined
 	upstreamBillingAutoProbeEnabled.value = extra?.upstream_billing_probe_enabled === true
   upstreamBillingRateSyncEnabled.value =
     upstreamBillingAutoProbeEnabled.value && extra?.upstream_billing_rate_sync_enabled === true
@@ -5133,9 +5145,16 @@ const handleSubmit = async () => {
     return
   }
 	if (autoResetCreditEnabled.value) {
-		const thresholds = [autoResetCredit5hThreshold.value, autoResetCredit7dThreshold.value]
+		const thresholds = [
+			autoResetCreditPolicy5hEnabled.value ? autoResetCredit5hThreshold.value : 100,
+			autoResetCreditPolicy7dEnabled.value ? autoResetCredit7dThreshold.value : 100
+		]
 		if (thresholds.some((value) => !Number.isFinite(value) || value < 0.1 || value > 100)) {
 			appStore.showError(t('admin.accounts.autoResetCredit.thresholdInvalid'))
+			return
+		}
+		if (!Number.isFinite(autoResetCreditPolicyGuardDays.value) || autoResetCreditPolicyGuardDays.value < 0 || autoResetCreditPolicyGuardDays.value > 7) {
+			appStore.showError(t('admin.accounts.autoResetCredit.guardInvalid'))
 			return
 		}
 	}
@@ -5729,9 +5748,19 @@ const handleSubmit = async () => {
 			newExtra.auto_reset_credit_enabled = autoResetCreditEnabled.value
 			newExtra.auto_reset_credit_5h_threshold = autoResetCredit5hThreshold.value / 100
 			newExtra.auto_reset_credit_7d_threshold = autoResetCredit7dThreshold.value / 100
+			if (autoResetCreditPolicyPresent.value || autoResetCreditPolicyDirty.value) {
+				newExtra.photonthinx_auto_reset_credit_policy = {
+					mode: autoResetCreditPolicyMode.value,
+					reset_5h_enabled: autoResetCreditPolicy5hEnabled.value,
+					reset_7d_enabled: autoResetCreditPolicy7dEnabled.value,
+					seven_day_guard_days: autoResetCreditPolicyGuardDays.value
+				}
+			}
 		}
 		// 运行态只允许后端服务更新，账号编辑不得回写旧状态。
 		delete newExtra.codex_auto_reset_credit_state
+		delete newExtra.photonthinx_codex_window_presence
+		delete newExtra.photonthinx_auto_reset_observation_state
 
 		delete newExtra.codex_image_generation_bridge_enabled
       switch (codexImageToolMode.value) {

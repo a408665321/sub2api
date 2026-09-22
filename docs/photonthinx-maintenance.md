@@ -3,8 +3,9 @@
 ## 分支和基线
 
 - 社区基线：正式 tag `v0.2.5`（`86f93c28e`）。
-- 内部起点：已上线 `v0.2.5-photonthinx.1`（`1b3d82cd67a593d306bb5be9a977fde541c65f6f`）。
-- 内部主干：`internal/main`；月报功能分支：`codex/photonthinx-monthly-reports`。
+- 当前已发布内部基线：`v0.2.5-photonthinx.2`（`5681afc2550ec2a0168f65ef8e9429f8dbcf2f90`）。
+- 当前开发版本：`v0.2.5-photonthinx.3`；功能分支：`codex/openai-reset-credit-policy`。
+- 内部主干：`internal/main`。
 - `main`、`origin/main` 和旧 `custom/main` 不作为内部版本的隐式发布起点。保留其原状。
 - `origin` 是社区仓库；`mine` 是个人 GitHub 仓库。内部主干的远端目标应由用户确认，不能直接假设可推送到公开仓库。
 
@@ -15,6 +16,7 @@
 | 客户端取消后保存 response 归属绑定 | `d1cf23e33`；`backend/internal/service/openai_ws_state_store.go` | `TestOpenAIWSStateStore_*`，特别是两个 `PersistsAfterParentCancellation` 测试 |
 | OIDC 独占登录 | `1b3d82cd6`；该提交中的 auth/config/frontend 文件 | OIDC 独占/运行时关闭/注册及登录页面回归；不得意外恢复密码入口 |
 | 管理员月报 | `backend/internal/photonthinx/usagereport`；各层 `photonthinx_usage_report*.go`；前端 `photonthinx` 模块 | 月界、汇总、分页、权限、竞态、失败重试 |
+| OpenAI 重置卡窗口策略与观察模式 | `backend/internal/service/photonthinx_openai_auto_reset_policy.go`；`frontend/src/components/account/PhotonthinxOpenAIAutoResetPolicy.vue` | Pro 无 5h、5h 禁用、7d 保护期、观察去重、执行前复核、模式切换 |
 | 用量保留至少 400 天 | `deploy/photonthinx` | 不缩短更长配置；billing dedup >= usage logs；检查磁盘增长 |
 | 内部维护 Skill | `.agents/skills/maintain-photonthinx-sub2api` | 格式校验；更新基线、清单和命令 |
 
@@ -26,6 +28,44 @@
 2. `frontend/src/views/admin/UsageView.vue` 增加标签、懒加载和显示切换；原筛选组件使用 `v-show` 保留内部状态。
 
 其余均为新增文件；无迁移、原 Repository 接口/构造器扩展或网关、计费链路改动。独立报表接口通过实际 repository 的附加方法连接已有 DI。升级时若上游改变连接或 Handler 结构，优先修新模块的适配。
+
+## OpenAI 重置卡策略
+
+`.3` 不新增表或 migration，不扩展 Repository、DI 或 API 路由。账号配置和运行态复用 `accounts.extra` JSONB，完整决策历史复用管理员审计日志，跨实例去重复用现有幂等表。
+
+管理员配置键：
+
+```json
+{
+  "photonthinx_auto_reset_credit_policy": {
+    "mode": "observe",
+    "reset_5h_enabled": false,
+    "reset_7d_enabled": true,
+    "seven_day_guard_days": 2
+  }
+}
+```
+
+- 未包含策略对象的旧账号保持 `.2` 行为：`enforce`、5h/7d 均启用、保护期为 0。
+- 新启用自动用卡默认 `observe`；切换 `enforce` 必须在管理端确认。
+- `seven_day_guard_days` 范围 0～7，管理端步进 0.5；距 7d 自然重置时间小于或等于保护期时不使用卡。
+- 只有新鲜上游快照明确识别出约 5h（4～6 小时）或约 7d（6～8 天）窗口才参与判断。套餐名称不参与判断；缺少时长、无效重置时间和过期快照均 fail closed。
+- 观察模式模拟真实调度：有完整可用卡时可越过普通暂停阈值，到用卡阈值记录 `would_reset` 后暂停，不调用兑换接口。
+- 5h 用卡关闭或 7d 进入保护期时，即使普通自动暂停被禁用，窗口耗尽也强制暂停。
+
+服务管理、账号编辑请求不得回写的运行态键：
+
+- `photonthinx_codex_window_presence`：每个新鲜快照同时写入 5h/7d 的存在与不存在状态，覆盖旧残留值。
+- `photonthinx_auto_reset_observation_state`：每个窗口仅保留最近一次判定，不保存数组。
+
+审计动作 `system.openai.reset_credit.policy` 不含卡 ID、兑换 ID、Token 或凭据。去重键包含账号、窗口、上游周期、判定、原因和策略摘要；幂等设施不可用时不降级为重复普通日志。主要接入点限定为：
+
+1. `openai_quota_auto_reset_config.go`：配置校验和运行态剥离。
+2. `openai_gateway_usage.go`：新鲜窗口存在性落盘。
+3. `openai_gateway_scheduling.go`：暂停/放行策略。
+4. `openai_quota_auto_reset.go`：观察、兑换前二次读取与 fail-closed。
+5. `admin_account.go`：全量编辑时保留服务管理运行态。
+6. `EditAccountModal.vue`：挂载独立策略组件。
 
 ## 报表 API 与口径
 
@@ -85,6 +125,7 @@ python3 deploy/photonthinx/retention.py --usage-logs-days 730 --usage-billing-de
 ```sh
 go test -tags unit ./internal/photonthinx/... ./internal/handler/admin ./internal/server/routes ./internal/service ./internal/handler ./internal/server/middleware -run 'Photonthinx|ParseShanghai|FillTrend|OIDC|Usage|OpenAIWSStateStore' -count=1
 go test -tags integration ./internal/repository -run 'TestPhotonthinx|TestUsageLog_' -count=1
+go test -tags unit ./internal/service -run 'OpenAIAutoReset|Photonthinx' -count=1
 ```
 
 集成测试使用 testcontainers 的临时 PostgreSQL/Redis，不连接生产库。Docker 不可用时上游 harness 会跳过，本地需要确认测试实际执行。可用 `SUB2API_TEST_POSTGRES_IMAGE=postgres:18-alpine` 指定测试镜像。
@@ -93,6 +134,7 @@ go test -tags integration ./internal/repository -run 'TestPhotonthinx|TestUsageL
 
 ```sh
 pnpm test:run src/components/admin/photonthinx src/views/admin/__tests__/photonthinxUsageView.spec.ts src/views/admin/__tests__/UsageView.spec.ts src/components/admin/usage/__tests__/UserTokenRanking.spec.ts
+pnpm test:run src/components/account/__tests__/PhotonthinxOpenAIAutoResetPolicy.spec.ts src/components/account/__tests__/EditAccountModal.spec.ts
 pnpm typecheck
 pnpm build
 ```

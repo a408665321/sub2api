@@ -259,13 +259,17 @@ func (s *OpenAIQuotaAutoResetService) tryAcquireScanLock(ctx context.Context) (f
 }
 
 type openAIAutoResetAssessment struct {
-	triggerWindow string
-	resetReached  bool
-	pauseReached  bool
-	utilization5h float64
-	utilization7d float64
-	threshold5h   float64
-	threshold7d   float64
+	triggerWindow    string
+	resetReached     bool
+	pauseReached     bool
+	policyDecision   string
+	policyReason     string
+	utilization5h    float64
+	utilization7d    float64
+	threshold5h      float64
+	threshold7d      float64
+	pauseThreshold5h float64
+	pauseThreshold7d float64
 }
 
 func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accountID int64) error {
@@ -289,6 +293,10 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 	assessment := s.assessExtra(account, config, now)
 	state := openAIAutoResetStateFromExtra(account.Extra)
 	needsQuery := openAIAutoResetSnapshotStale(account.Extra, now) || assessment.resetReached
+	policy := resolvePhotonthinxAutoResetCreditPolicy(account.Extra)
+	if policy.Configured && !photonthinxCodexWindowPresenceComplete(account.Extra) {
+		needsQuery = true
+	}
 	if assessment.pauseReached && !assessment.resetReached {
 		needsQuery = needsQuery || state == nil || state.Status == OpenAIAutoResetStatusChecking || state.Status == OpenAIAutoResetStatusFailed || openAIAutoResetStateStale(state, now)
 	}
@@ -338,9 +346,52 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 	if !config.Enabled {
 		return nil
 	}
-	assessment = s.assessUsage(usage, account, config, now)
+	policy = resolvePhotonthinxAutoResetCreditPolicy(account.Extra)
 	available := usage.RateLimitResetCredits.AvailableCount
+	if err := s.recordPhotonthinxAbsentWindows(ctx, account, policy, config, available, now); err != nil {
+		return err
+	}
+	account, err = s.accountRepo.GetByID(ctx, accountID)
+	if err != nil || account == nil {
+		return err
+	}
+	config = ResolveOpenAIAutoResetCreditConfig(account)
+	if !config.Enabled {
+		return nil
+	}
+	assessment = s.assessUsage(usage, account, config, now)
 	if !assessment.resetReached {
+		policy = resolvePhotonthinxAutoResetCreditPolicy(account.Extra)
+		cycleHash := shortOpenAIAutoResetHash(openAIAutoResetCycleSeed(usage))
+		if policy.Configured {
+			switch {
+			case assessment.policyReason != "":
+				if err := s.recordPhotonthinxObservation(ctx, accountID, account.Extra, policy, assessment, available, assessment.policyDecision, assessment.policyReason, cycleHash, now); err != nil {
+					return err
+				}
+			case assessment.pauseReached && available <= 0:
+				if err := s.recordPhotonthinxObservation(ctx, accountID, account.Extra, policy, assessment, 0, "skipped", "no_credit", cycleHash, now); err != nil {
+					return err
+				}
+			case assessment.pauseReached:
+				if _, selectErr := selectOpenAIAutoResetCandidate(usage.autoResetCandidates, available, state, cycleHash); selectErr != nil {
+					if err := s.recordPhotonthinxObservation(ctx, accountID, account.Extra, policy, assessment, available, "skipped", photonthinxCreditDetailsReason(selectErr), cycleHash, now); err != nil {
+						return err
+					}
+					return s.persistState(ctx, accountID, &OpenAIAutoResetCreditState{
+						Status:         OpenAIAutoResetStatusFailed,
+						TriggerWindow:  assessment.triggerWindow,
+						AvailableCount: available,
+						CheckedAt:      now.UTC().Format(time.RFC3339),
+						LastResultAt:   now.UTC().Format(time.RFC3339),
+						ErrorCode:      "RESET_CREDIT_DETAILS_INCOMPLETE",
+					})
+				}
+				if err := s.recordPhotonthinxObservation(ctx, accountID, account.Extra, policy, assessment, available, "would_bypass_pause", "eligible_credit", cycleHash, now); err != nil {
+					return err
+				}
+			}
+		}
 		status := OpenAIAutoResetStatusNoCredit
 		if available > 0 {
 			status = OpenAIAutoResetStatusAvailable
@@ -353,6 +404,13 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 		})
 	}
 	if available <= 0 {
+		policy := resolvePhotonthinxAutoResetCreditPolicy(account.Extra)
+		if policy.Configured {
+			cycleHash := shortOpenAIAutoResetHash(openAIAutoResetCycleSeed(usage))
+			if err := s.recordPhotonthinxObservation(ctx, accountID, account.Extra, policy, assessment, 0, "skipped", "no_credit", cycleHash, now); err != nil {
+				return err
+			}
+		}
 		return s.persistState(ctx, accountID, &OpenAIAutoResetCreditState{
 			Status:         OpenAIAutoResetStatusNoCredit,
 			TriggerWindow:  assessment.triggerWindow,
@@ -362,11 +420,77 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 			ErrorCode:      "NO_RESET_CREDIT",
 		})
 	}
-
+	policy = resolvePhotonthinxAutoResetCreditPolicy(account.Extra)
 	cycleSeed := openAIAutoResetCycleSeed(usage)
 	cycleHash := shortOpenAIAutoResetHash(cycleSeed)
+	if policy.Mode == "observe" {
+		if _, selectErr := selectOpenAIAutoResetCandidate(usage.autoResetCandidates, available, state, cycleHash); selectErr != nil {
+			return s.recordPhotonthinxObservation(
+				ctx, accountID, account.Extra, policy, assessment, available,
+				"skipped", photonthinxCreditDetailsReason(selectErr), cycleHash, now,
+			)
+		}
+		return s.recordPhotonthinxObservation(ctx, accountID, account.Extra, policy, assessment, available, "would_reset", "threshold_reached", cycleHash, now)
+	}
+
+	// The first query drives scheduling and observation. Immediately before a real
+	// redemption, re-read both policy and upstream quota so queued work cannot
+	// consume a credit under stale administrator settings or window data.
+	account, err = s.accountRepo.GetByID(ctx, accountID)
+	if err != nil || account == nil {
+		return err
+	}
+	config = ResolveOpenAIAutoResetCreditConfig(account)
+	policy = resolvePhotonthinxAutoResetCreditPolicy(account.Extra)
+	if !config.Enabled || policy.Mode != "enforce" {
+		return nil
+	}
+	freshUsage, err := s.quota.QueryUsage(ctx, accountID)
+	if err != nil || freshUsage == nil {
+		return s.failState(ctx, accountID, checking, "RESET_CREDIT_RECHECK_FAILED", err)
+	}
+	if freshUsage.RateLimitResetCredits == nil {
+		return s.failState(ctx, accountID, checking, "RESET_CREDIT_DETAILS_UNAVAILABLE", nil)
+	}
+	if err := s.persistFreshUsage(ctx, accountID, freshUsage, time.Now()); err != nil {
+		return s.failState(ctx, accountID, checking, "USAGE_RECHECK_WRITE_FAILED", err)
+	}
+	account, err = s.accountRepo.GetByID(ctx, accountID)
+	if err != nil || account == nil {
+		return err
+	}
+	config = ResolveOpenAIAutoResetCreditConfig(account)
+	policy = resolvePhotonthinxAutoResetCreditPolicy(account.Extra)
+	if !config.Enabled || policy.Mode != "enforce" {
+		return nil
+	}
+	assessment = s.assessUsage(freshUsage, account, config, time.Now())
+	if !assessment.resetReached {
+		return nil
+	}
+	usage = freshUsage
+	available = usage.RateLimitResetCredits.AvailableCount
+	cycleSeed = openAIAutoResetCycleSeed(usage)
+	cycleHash = shortOpenAIAutoResetHash(cycleSeed)
+	if available <= 0 {
+		if policy.Configured {
+			if err := s.recordPhotonthinxObservation(ctx, accountID, account.Extra, policy, assessment, 0, "skipped", "no_credit", cycleHash, time.Now()); err != nil {
+				return err
+			}
+		}
+		checkedAt := time.Now().UTC().Format(time.RFC3339)
+		return s.persistState(ctx, accountID, &OpenAIAutoResetCreditState{
+			Status: OpenAIAutoResetStatusNoCredit, TriggerWindow: assessment.triggerWindow,
+			AvailableCount: 0, CheckedAt: checkedAt, LastResultAt: checkedAt, ErrorCode: "NO_RESET_CREDIT",
+		})
+	}
 	candidate, selectErr := selectOpenAIAutoResetCandidate(usage.autoResetCandidates, available, state, cycleHash)
 	if selectErr != nil {
+		if policy.Configured {
+			if err := s.recordPhotonthinxObservation(ctx, accountID, account.Extra, policy, assessment, available, "skipped", photonthinxCreditDetailsReason(selectErr), cycleHash, time.Now()); err != nil {
+				return err
+			}
+		}
 		failed := checking
 		failed.AvailableCount = available
 		failed.TriggerWindow = assessment.triggerWindow
@@ -388,10 +512,6 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 		return err
 	}
 
-	account, err = s.accountRepo.GetByID(ctx, accountID)
-	if err != nil || account == nil || !ResolveOpenAIAutoResetCreditConfig(account).Enabled {
-		return err
-	}
 	result, err := s.idempotency.Execute(ctx, IdempotencyExecuteOptions{
 		Scope:          "openai_auto_reset_credit",
 		ActorScope:     fmt.Sprintf("account:%d", accountID),
@@ -502,25 +622,42 @@ func decodeOpenAIAutoResetConsumeResult(value any) openAIAutoResetConsumeResult 
 func (s *OpenAIQuotaAutoResetService) assessExtra(account *Account, config OpenAIAutoResetCreditConfig, now time.Time) openAIAutoResetAssessment {
 	utilization5h, _ := resolveOpenAIQuotaUtilization(account.Extra, "5h", now)
 	utilization7d, _ := resolveOpenAIQuotaUtilization(account.Extra, "7d", now)
-	return s.buildAssessment(account, config, utilization5h, utilization7d)
+	return s.buildAssessmentAt(account, config, utilization5h, utilization7d, now)
 }
 
 func (s *OpenAIQuotaAutoResetService) assessUsage(usage *OpenAIQuotaUsage, account *Account, config OpenAIAutoResetCreditConfig, now time.Time) openAIAutoResetAssessment {
 	updates := buildOpenAIAutoResetUsageUpdates(usage, now)
 	utilization5h := readOpenAIQuotaUsedPercent(updates, "5h") / 100
 	utilization7d := readOpenAIQuotaUsedPercent(updates, "7d") / 100
-	return s.buildAssessment(account, config, utilization5h, utilization7d)
+	if policy := resolvePhotonthinxAutoResetCreditPolicy(account.Extra); policy.Configured {
+		if present, known := photonthinxCodexWindowPresent(updates, "5h"); !known || !present {
+			utilization5h = 0
+		}
+		if present, known := photonthinxCodexWindowPresent(updates, "7d"); !known || !present {
+			utilization7d = 0
+		}
+	}
+	return s.buildAssessmentAt(account, config, utilization5h, utilization7d, now)
 }
 
 func (s *OpenAIQuotaAutoResetService) buildAssessment(account *Account, config OpenAIAutoResetCreditConfig, utilization5h, utilization7d float64) openAIAutoResetAssessment {
+	return s.buildAssessmentAt(account, config, utilization5h, utilization7d, time.Now())
+}
+
+func (s *OpenAIQuotaAutoResetService) buildAssessmentAt(account *Account, config OpenAIAutoResetCreditConfig, utilization5h, utilization7d float64, now time.Time) openAIAutoResetAssessment {
+	policy := resolvePhotonthinxAutoResetCreditPolicy(account.Extra)
 	assessment := openAIAutoResetAssessment{
 		utilization5h: utilization5h,
 		utilization7d: utilization7d,
 		threshold5h:   config.Threshold5h,
 		threshold7d:   config.Threshold7d,
 	}
-	reset5h := utilization5h >= config.Threshold5h
-	reset7d := utilization7d >= config.Threshold7d
+	reached5h := utilization5h >= config.Threshold5h
+	reached7d := utilization7d >= config.Threshold7d
+	fiveHourAllowed, fiveHourReason := policy.fiveHourResetEligibility(account.Extra, now)
+	reset5h := reached5h && fiveHourAllowed
+	sevenDayAllowed, sevenDayReason := policy.sevenDayResetEligibility(account.Extra, now)
+	reset7d := reached7d && sevenDayAllowed
 	assessment.resetReached = reset5h || reset7d
 	assessment.triggerWindow = joinOpenAIAutoResetWindows(reset5h, reset7d)
 
@@ -531,11 +668,21 @@ func (s *OpenAIQuotaAutoResetService) buildAssessment(account *Account, config O
 			account,
 		)
 	}
+	assessment.pauseThreshold5h = pause5h
+	assessment.pauseThreshold7d = pause7d
 	pauseReached5h := !resolveAccountExtraBool(account.Extra, "auto_pause_5h_disabled") && pause5h > 0 && utilization5h >= pause5h
 	pauseReached7d := !resolveAccountExtraBool(account.Extra, "auto_pause_7d_disabled") && pause7d > 0 && utilization7d >= pause7d
-	assessment.pauseReached = pauseReached5h || pauseReached7d || assessment.resetReached
+	assessment.pauseReached = pauseReached5h || pauseReached7d || assessment.resetReached || (reached5h && !policy.Reset5hEnabled) || (reached7d && !reset7d)
+	if (pauseReached5h || reached5h) && !fiveHourAllowed {
+		assessment.policyDecision = "skipped"
+		assessment.policyReason = fiveHourReason
+	}
+	if (pauseReached7d || reached7d) && !sevenDayAllowed {
+		assessment.policyDecision = "skipped"
+		assessment.policyReason = sevenDayReason
+	}
 	if assessment.triggerWindow == "" {
-		assessment.triggerWindow = joinOpenAIAutoResetWindows(pauseReached5h, pauseReached7d)
+		assessment.triggerWindow = joinOpenAIAutoResetWindows(pauseReached5h || reached5h, pauseReached7d || reached7d)
 	}
 	return assessment
 }
@@ -554,10 +701,9 @@ func joinOpenAIAutoResetWindows(fiveHour, sevenDay bool) string {
 }
 
 func buildOpenAIAutoResetUsageUpdates(usage *OpenAIQuotaUsage, now time.Time) map[string]any {
-	if usage == nil || usage.RateLimit == nil {
+	if usage == nil {
 		return nil
 	}
-	rateLimit := usage.RateLimit
 	snapshot := &OpenAICodexUsageSnapshot{UpdatedAt: now.UTC().Format(time.RFC3339)}
 	applyWindow := func(window *OpenAIRateLimitWindow, primary bool) {
 		if window == nil {
@@ -576,8 +722,10 @@ func buildOpenAIAutoResetUsageUpdates(usage *OpenAIQuotaUsage, now time.Time) ma
 			snapshot.SecondaryWindowMinutes = &windowMinutes
 		}
 	}
-	applyWindow(rateLimit.PrimaryWindow, true)
-	applyWindow(rateLimit.SecondaryWindow, false)
+	if rateLimit := usage.RateLimit; rateLimit != nil {
+		applyWindow(rateLimit.PrimaryWindow, true)
+		applyWindow(rateLimit.SecondaryWindow, false)
+	}
 	return buildCodexUsageExtraUpdates(snapshot, now)
 }
 
