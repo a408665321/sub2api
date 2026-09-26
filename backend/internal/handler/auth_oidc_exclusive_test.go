@@ -3,11 +3,13 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -67,4 +69,33 @@ func TestOIDCExclusiveModeAllowsPasswordLoginWhenOIDCIsDisabledAtRuntime(t *test
 
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
 	require.NotContains(t, recorder.Body.String(), "OIDC login is required")
+}
+
+func TestOIDCExclusiveModeRejectsStaleNonOIDCPendingSession(t *testing.T) {
+	handler := &AuthHandler{cfg: &config.Config{OIDC: config.OIDCConnectConfig{
+		Enabled:   true,
+		Exclusive: true,
+	}}}
+
+	err := handler.ensureOIDCExclusiveAllowsPendingSession(
+		context.Background(),
+		&dbent.PendingAuthSession{ProviderType: "github"},
+	)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "OIDC login is required")
+}
+
+func TestOIDCExclusiveModeAllowsOIDCPendingSession(t *testing.T) {
+	handler := &AuthHandler{cfg: &config.Config{OIDC: config.OIDCConnectConfig{
+		Enabled:   true,
+		Exclusive: true,
+	}}}
+
+	err := handler.ensureOIDCExclusiveAllowsPendingSession(
+		context.Background(),
+		&dbent.PendingAuthSession{ProviderType: "oidc"},
+	)
+
+	require.NoError(t, err)
 }

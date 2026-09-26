@@ -615,6 +615,40 @@ func TestOIDCOAuthCallbackCreatesBindPendingSessionForCurrentUser(t *testing.T) 
 	require.Equal(t, 1, userCount)
 }
 
+func TestCompleteOIDCOAuthRegistrationRejectsStaleNonOIDCPendingSession(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandler(t, false)
+	handler.cfg = &config.Config{OIDC: config.OIDCConnectConfig{Enabled: true, Exclusive: true}}
+	handler.settingSvc = service.NewSettingService(&oauthPendingFlowSettingRepoStub{values: map[string]string{
+		service.SettingKeyOIDCConnectEnabled: "true",
+	}}, handler.cfg)
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("stale-github-completion").
+		SetIntent("login").
+		SetProviderType("github").
+		SetProviderKey("github").
+		SetProviderSubject("123").
+		SetResolvedEmail("stale@example.com").
+		SetBrowserSessionKey("oidc-browser").
+		SetUpstreamIdentityClaims(map[string]any{"username": "stale-user"}).
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(context.Background())
+	require.NoError(t, err)
+
+	recorder := httptest.NewRecorder()
+	requestCtx, _ := gin.CreateTestContext(recorder)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/oidc/complete-registration", bytes.NewBufferString(`{"invitation_code":"test-invite"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)})
+	request.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("oidc-browser")})
+	requestCtx.Request = request
+
+	handler.CompleteOIDCOAuthRegistration(requestCtx)
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	require.Contains(t, recorder.Body.String(), "OIDC login is required")
+}
+
 func TestCompleteOIDCOAuthRegistrationAppliesPendingAdoptionDecision(t *testing.T) {
 	handler, client := newOAuthPendingFlowTestHandler(t, false)
 	ctx := context.Background()

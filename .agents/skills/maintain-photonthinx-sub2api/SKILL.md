@@ -9,7 +9,7 @@ description: Maintain the Photonthinx internal Sub2API fork, including upstream 
 
 ## 基线与边界
 
-- 内部主干是 `internal/main`，起点为已上线 `v0.2.5-photonthinx.1`（`1b3d82cd6`），社区基线 `v0.2.5`。以后以仓库维护清单和实际 tag 为准。
+- 内部主干是 `internal/main`，当前升级起点为 `v0.2.8-photonthinx.1`，社区基线 `v0.2.8`。以后以仓库维护清单和实际 tag 为准。
 - 不把混有用户改动的 `main` 或旧 `custom/main` 当作发布起点。保留用户未提交文件，使用独立功能分支/worktree。
 - 保留 OIDC 独占登录和客户端取消后的 response 归属绑定修复；不恢复旧内部 forward-audit 定制。
 - 接到实现/诊断任务不等于获得镜像发布、公开仓库推送或生产升级授权；按当次用户范围执行。Skill 不额外要求已获授权的操作再次确认。

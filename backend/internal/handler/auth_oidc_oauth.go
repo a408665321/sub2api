@@ -648,6 +648,18 @@ func (h *AuthHandler) CompleteOIDCOAuthRegistration(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	if err := h.ensureOIDCExclusiveAllowsPendingSession(c.Request.Context(), session); err != nil {
+		clearOAuthPendingSessionCookie(c, secureCookie)
+		clearOAuthPendingBrowserCookie(c, secureCookie)
+		response.ErrorFrom(c, err)
+		return
+	}
+	if !strings.EqualFold(strings.TrimSpace(session.ProviderType), "oidc") {
+		clearOAuthPendingSessionCookie(c, secureCookie)
+		clearOAuthPendingBrowserCookie(c, secureCookie)
+		response.ErrorFrom(c, infraerrors.Forbidden("OIDC_PROVIDER_REQUIRED", "OIDC login is required"))
+		return
+	}
 	if err := ensurePendingOAuthCompleteRegistrationSession(session); err != nil {
 		response.ErrorFrom(c, err)
 		return

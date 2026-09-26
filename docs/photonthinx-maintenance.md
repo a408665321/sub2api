@@ -2,9 +2,9 @@
 
 ## 分支和基线
 
-- 社区基线：正式 tag `v0.2.5`（`86f93c28e`）。
-- 当前已发布内部基线：`v0.2.5-photonthinx.2`（`5681afc2550ec2a0168f65ef8e9429f8dbcf2f90`）。
-- 当前开发版本：`v0.2.5-photonthinx.3`；功能分支：`codex/openai-reset-credit-policy`。
+- 社区基线：正式 tag `v0.2.8`（`fd80b08c9`）。
+- 当前已发布内部基线：`v0.2.5-photonthinx.3`。
+- 当前开发版本：`v0.2.8-photonthinx.1`；功能分支：`codex/photonthinx-v0.2.8`。
 - 内部主干：`internal/main`。
 - `main`、`origin/main` 和旧 `custom/main` 不作为内部版本的隐式发布起点。保留其原状。
 - `origin` 是社区仓库；`mine` 是个人 GitHub 仓库。内部主干的远端目标应由用户确认，不能直接假设可推送到公开仓库。
@@ -139,7 +139,7 @@ pnpm typecheck
 pnpm build
 ```
 
-还需执行 `python3 -m unittest discover -s deploy/photonthinx -p 'test_*.py'` 和 skill-creator 的 `quick_validate.py`。核对 `git diff --name-status v0.2.5-photonthinx.1`：除两个接入点外都应是新增文件；没有新迁移。
+还需执行 `python3 -m unittest discover -s deploy/photonthinx -p 'test_*.py'` 和 skill-creator 的 `quick_validate.py`。核对 `git diff --name-status v0.2.8`，并确认没有意外迁移或发布文件残留旧版本号。
 
 ## 版本发布与回滚
 
@@ -149,7 +149,7 @@ pnpm build
 - 从核验的 `internal/main` 提交构建，记录提交、基线、构建参数、镜像标签/digest及测试。构建参考已有 `Dockerfile`、`deploy/Dockerfile.photonthinx-runtime`，实际构建方式须与发布版本内容一致。
 - Nexus 推送/核验复用 `photonthinx-docker-publish` Skill。Hosted: `repo.photonthinx.careray.com:8082/docker-hosted/photonthinx/sub2api:<version>`；Group 拉取路径为 `docker-group/photonthinx/sub2api:<version>`。
 - 不在 Git、Skill 或输出中写入凭据；使用现有登录或凭据管理 Skill。
-- 最近部署参考：主机 `photonthinx-1`（对话曾写 phtonthinx-1），Compose 目录 `/srv/sub2api`；发布前重新核实。当前基线镜像 `0.2.5-photonthinx.1`。
+- 最近部署参考：主机 `photonthinx-1`（对话曾写 phtonthinx-1），Compose 目录 `/srv/sub2api`；发布前重新核实。升级前必须现场读取当前镜像，不依赖文档中的历史版本。
 - 升级前保存旧镜像引用、完整有效 Compose 文件列表和 override 备份，校验 400 天配置。只对应用执行 `docker compose ... up -d --no-deps sub2api`，保持 PostgreSQL/Redis。
 - 核验容器健康、程序版本、直连及 Nginx `/health`、OIDC 独占登录、月报权限/汇总、response 绑定取消回归。
 - 该主机历史上直接拉取 HTTP registry 有 HTTPS 匹配问题。若仍存在，使用已授权的 `docker save`/`docker load` 分发流程；不为此自动重启 Docker。

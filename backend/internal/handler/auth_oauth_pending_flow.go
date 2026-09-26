@@ -1473,6 +1473,10 @@ func readPendingOAuthBrowserSession(c *gin.Context, h *AuthHandler) (*service.Au
 		clearCookies()
 		return nil, nil, clearCookies, err
 	}
+	if err := h.ensureOIDCExclusiveAllowsPendingSession(c.Request.Context(), session); err != nil {
+		clearCookies()
+		return nil, nil, clearCookies, err
+	}
 
 	return svc, session, clearCookies, nil
 }
@@ -1929,6 +1933,11 @@ func (h *AuthHandler) ExchangePendingOAuthCompletion(c *gin.Context) {
 
 	session, err := svc.GetBrowserSession(c.Request.Context(), sessionToken, browserSessionKey)
 	if err != nil {
+		clearCookies()
+		response.ErrorFrom(c, err)
+		return
+	}
+	if err := h.ensureOIDCExclusiveAllowsPendingSession(c.Request.Context(), session); err != nil {
 		clearCookies()
 		response.ErrorFrom(c, err)
 		return

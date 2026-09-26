@@ -76,6 +76,47 @@ func TestSetOAuthPendingSessionCookieUsesProviderCompletionPathPrefix(t *testing
 	require.Equal(t, "/api/v1/auth/oauth", cookie.Path)
 }
 
+func TestExchangePendingOAuthCompletionRejectsStaleNonOIDCSessionInExclusiveMode(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{
+		settingValues: map[string]string{
+			service.SettingKeyOIDCConnectEnabled: "true",
+		},
+	})
+	handler.cfg = &config.Config{OIDC: config.OIDCConnectConfig{
+		Enabled:   true,
+		Exclusive: true,
+	}}
+	handler.settingSvc = service.NewSettingService(&oauthPendingFlowSettingRepoStub{values: map[string]string{
+		service.SettingKeyOIDCConnectEnabled: "true",
+	}}, handler.cfg)
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("stale-github-session").
+		SetIntent("login").
+		SetProviderType("github").
+		SetProviderKey("github").
+		SetProviderSubject("123").
+		SetBrowserSessionKey("browser-session-key").
+		SetLocalFlowState(map[string]any{
+			oauthCompletionResponseKey: map[string]any{"redirect": "/dashboard"},
+		}).
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(context.Background())
+	require.NoError(t, err)
+
+	recorder := httptest.NewRecorder()
+	requestCtx, _ := gin.CreateTestContext(recorder)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/pending/exchange", nil)
+	request.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)})
+	request.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("browser-session-key")})
+	requestCtx.Request = request
+
+	handler.ExchangePendingOAuthCompletion(requestCtx)
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	require.Contains(t, recorder.Body.String(), "OIDC login is required")
+}
+
 func TestExchangePendingOAuthCompletionPreviewThenFinalizeAppliesAdoptionDecision(t *testing.T) {
 	handler, client := newOAuthPendingFlowTestHandler(t, false)
 	ctx := context.Background()

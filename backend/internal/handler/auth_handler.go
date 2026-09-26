@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -190,6 +191,16 @@ func (h *AuthHandler) isOIDCExclusiveModeEnabled(ctx context.Context) bool {
 		return h.settingSvc.IsOIDCExclusiveModeEnabled(ctx)
 	}
 	return h.cfg != nil && h.cfg.OIDC.Enabled && h.cfg.OIDC.Exclusive
+}
+
+func (h *AuthHandler) ensureOIDCExclusiveAllowsPendingSession(ctx context.Context, session *dbent.PendingAuthSession) error {
+	if h == nil || !h.isOIDCExclusiveModeEnabled(ctx) {
+		return nil
+	}
+	if session != nil && strings.EqualFold(strings.TrimSpace(session.ProviderType), "oidc") {
+		return nil
+	}
+	return infraerrors.Forbidden("OIDC_EXCLUSIVE_REQUIRED", "OIDC login is required")
 }
 
 // Register handles user registration
