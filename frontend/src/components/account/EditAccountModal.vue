@@ -3085,10 +3085,11 @@ import type {
   GrokMediaEligibilityMode,
   GrokMediaEligibilityState,
   OpenCodeGoUsageState,
-  OpenCodeGoUsageWindow
+  OpenCodeGoUsageWindow,
   PhotonthinxAutoResetCreditPolicy,
   PhotonthinxCodexWindowPresence,
-  PhotonthinxAutoResetObservationState} from '@/types'
+  PhotonthinxAutoResetObservationState
+} from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'

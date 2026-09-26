@@ -1195,6 +1195,7 @@ export interface OpenCodeGoUsageSettings {
   interval_minutes: number
   /** Trailing quiet period after the latest model request (minutes). */
   debounce_minutes: number
+}
 export interface PhotonthinxAutoResetCreditPolicy {
   mode: 'observe' | 'enforce'
   reset_5h_enabled: boolean
@@ -1220,7 +1221,8 @@ export interface PhotonthinxAutoResetObservationDecision {
 }
 
 export interface PhotonthinxAutoResetObservationState {
-  windows?: Record<string, PhotonthinxAutoResetObservationDecision>}
+  windows?: Record<string, PhotonthinxAutoResetObservationDecision>
+}
 
 export interface Account {
   id: number
