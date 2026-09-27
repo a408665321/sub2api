@@ -1481,7 +1481,17 @@ func (s *GatewayService) checkAndRegisterSession(ctx context.Context, account *A
 
 	idleTimeout := time.Duration(account.GetSessionIdleTimeoutMinutes()) * time.Minute
 
-	allowed, err := s.sessionLimitCache.RegisterSession(ctx, account.ID, sessionID, maxSessions, idleTimeout)
+	var allowed bool
+	var err error
+	if occupancy, ok := s.sessionLimitCache.(SessionOccupancyCache); ok {
+		if userID, _ := ctx.Value(ctxkey.UserID).(int64); userID > 0 {
+			allowed, err = occupancy.RegisterSessionWithOwner(ctx, account.ID, sessionID, maxSessions, idleTimeout, userID)
+		} else {
+			allowed, err = s.sessionLimitCache.RegisterSession(ctx, account.ID, sessionID, maxSessions, idleTimeout)
+		}
+	} else {
+		allowed, err = s.sessionLimitCache.RegisterSession(ctx, account.ID, sessionID, maxSessions, idleTimeout)
+	}
 	if err != nil {
 		// 失败开放：缓存错误时允许通过
 		return true

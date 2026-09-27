@@ -399,6 +399,18 @@ export default {
           normal: 'Quota normal'
         },
       },
+      sessionOccupants: {
+        open: 'View active session occupants',
+        title: 'Active sessions · {name}',
+        loading: 'Loading session occupants…',
+        empty: 'No active sessions',
+        error: 'Failed to load active sessions',
+        refresh: 'Refresh',
+        unknown: 'Unknown user',
+        legacyHint: 'Owner will appear after this session is refreshed',
+        lastActive: 'Last active',
+        sessions: 'sessions'
+      },
       tempUnschedulable: {
         title: 'Temp Unschedulable',
         statusTitle: 'Temp Unschedulable Status',

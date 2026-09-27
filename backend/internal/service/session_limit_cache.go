@@ -12,6 +12,22 @@ import (
 // 数据结构: Sorted Set (member=sessionUUID, score=timestamp)
 //
 // 会话在空闲超时后自动过期，无需手动清理
+// SessionOccupant is a grouped view of active sessions. UserID is nil for
+// sessions created before owner tracking was introduced.
+type SessionOccupant struct {
+	UserID       *int64
+	SessionCount int
+	LastActive   time.Time
+}
+
+// SessionOccupancyCache is an optional companion interface. Keeping owner
+// tracking separate avoids forcing every SessionLimitCache test double to
+// implement administrative visibility.
+type SessionOccupancyCache interface {
+	RegisterSessionWithOwner(ctx context.Context, accountID int64, sessionUUID string, maxSessions int, idleTimeout time.Duration, userID int64) (allowed bool, err error)
+	GetSessionOccupants(ctx context.Context, accountID int64, idleTimeout time.Duration) ([]SessionOccupant, error)
+}
+
 type SessionLimitCache interface {
 	// RegisterSession 注册会话活动
 	// - 如果会话已存在，刷新其时间戳并返回 true

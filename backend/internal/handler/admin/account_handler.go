@@ -331,6 +331,20 @@ type AccountSchedulerScore struct {
 	StickyWeightedEnabled bool    `json:"sticky_weighted_enabled"`
 }
 
+type AccountSessionOccupantResponse struct {
+	UserID       *int64    `json:"user_id"`
+	Username     string    `json:"username,omitempty"`
+	Email        string    `json:"email,omitempty"`
+	LastActive   time.Time `json:"last_active"`
+	SessionCount int       `json:"session_count"`
+}
+
+type AccountSessionOccupancyResponse struct {
+	AccountID      int64                            `json:"account_id"`
+	ActiveSessions int                              `json:"active_sessions"`
+	Occupants      []AccountSessionOccupantResponse `json:"occupants"`
+}
+
 type AccountSchedulerGroupScore struct {
 	GroupID       *int64 `json:"group_id"`
 	GroupName     string `json:"group_name,omitempty"`
@@ -963,6 +977,42 @@ func (h *AccountHandler) GetByID(c *gin.Context) {
 	}
 
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+}
+
+// GetSessionOccupants returns grouped active-session owners without exposing session IDs.
+func (h *AccountHandler) GetSessionOccupants(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	occupancy, ok := h.sessionLimitCache.(service.SessionOccupancyCache)
+	if !ok {
+		response.Success(c, AccountSessionOccupancyResponse{AccountID: accountID, Occupants: []AccountSessionOccupantResponse{}})
+		return
+	}
+	entries, err := occupancy.GetSessionOccupants(c.Request.Context(), accountID, time.Duration(account.GetSessionIdleTimeoutMinutes())*time.Minute)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	result := AccountSessionOccupancyResponse{AccountID: accountID, Occupants: make([]AccountSessionOccupantResponse, 0, len(entries))}
+	for _, entry := range entries {
+		item := AccountSessionOccupantResponse{UserID: entry.UserID, LastActive: entry.LastActive, SessionCount: entry.SessionCount}
+		result.ActiveSessions += entry.SessionCount
+		if entry.UserID != nil {
+			if user, userErr := h.adminService.GetUserIncludeDeleted(c.Request.Context(), *entry.UserID); userErr == nil && user != nil {
+				item.Username, item.Email = user.Username, user.Email
+			}
+		}
+		result.Occupants = append(result.Occupants, item)
+	}
+	response.Success(c, result)
 }
 
 // CheckMixedChannel handles checking mixed channel risk for account-group binding.

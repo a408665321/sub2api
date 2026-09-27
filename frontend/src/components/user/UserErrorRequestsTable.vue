@@ -49,12 +49,12 @@
         </template>
 
         <template #cell-message="{ row }">
-          <span
-            v-if="row.message"
-            class="block max-w-[280px] truncate text-sm text-gray-600 dark:text-gray-400"
-            :title="row.message"
-          >{{ row.message }}</span>
-          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+          <div class="max-w-[320px] text-sm">
+            <div class="font-medium text-gray-900 dark:text-white">{{ diagnosisText(row, 'title') }}</div>
+            <div class="mt-0.5 line-clamp-2 text-xs text-gray-600 dark:text-gray-400" :title="diagnosisText(row, 'reason')">
+              {{ diagnosisText(row, 'reason') }}
+            </div>
+          </div>
         </template>
 
         <template #cell-group="{ row }">
@@ -161,7 +161,12 @@ function onSort(key: string, order: 'asc' | 'desc') {
   emit('sort', mapErrorSortKey(key), order)
 }
 
-const { t } = useI18n()
+const { t, te } = useI18n()
+
+function diagnosisText(row: UserErrorRequest, field: 'title' | 'reason' | 'suggestion'): string {
+  const key = `usage.errors.diagnoses.${row.diagnosis_code}.${field}`
+  return te(key) ? t(key) : row[`diagnosis_${field}`]
+}
 
 // 列序对齐用户端用量明细:Key → 模型 → 端点 → IP → 分组 → 类型 → 平台 → 分类
 // → 结果(状态→消息)→ 时间 → UA(用量明细 UA 同在时间之后的尾部)

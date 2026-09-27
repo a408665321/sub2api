@@ -250,6 +250,18 @@ export default {
           normal: '配额正常'
         },
       },
+      sessionOccupants: {
+        open: '查看活跃会话占用用户',
+        title: '活跃会话 · {name}',
+        loading: '正在加载会话占用信息…',
+        empty: '暂无活跃会话',
+        error: '加载活跃会话失败',
+        refresh: '刷新',
+        unknown: '未知用户',
+        legacyHint: '该会话刷新后将显示用户信息',
+        lastActive: '最后活跃',
+        sessions: '个会话'
+      },
       clearRateLimit: '清除速率限制',
       resetQuota: '重置配额',
       quotaLimit: '配额限制',

@@ -284,7 +284,7 @@
             </div>
           </template>
           <template #cell-capacity="{ row }">
-            <AccountCapacityCell :account="row" />
+            <AccountCapacityCell :account="row" @show-session-occupants="openSessionOccupants" />
           </template>
           <template #cell-status="{ row }">
             <div class="flex items-center gap-1.5">
@@ -479,6 +479,7 @@
         <span>{{ t('admin.accounts.dataExportIncludeProxies') }}</span>
       </label>
     </ConfirmDialog>
+    <AccountSessionOccupantsModal :show="showSessionOccupants" :account="sessionOccupantsAccount" @close="showSessionOccupants = false" />
     <ErrorPassthroughRulesModal :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
     <TLSFingerprintProfilesModal :show="showTLSFingerprintProfiles" @close="showTLSFingerprintProfiles = false" />
     <TotpStepUpDialog :controller="accountExportStepUp" />
@@ -519,6 +520,7 @@ import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
+import AccountSessionOccupantsModal from '@/components/account/AccountSessionOccupantsModal.vue'
 import UpstreamBillingRateCell from '@/components/account/UpstreamBillingRateCell.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -537,6 +539,12 @@ import type { Account, AccountListItem, AccountPlatform, AccountSchedulerGroupSc
 const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const showSessionOccupants = ref(false)
+const sessionOccupantsAccount = ref<Account | null>(null)
+const openSessionOccupants = (account: Account) => {
+  sessionOccupantsAccount.value = account
+  showSessionOccupants.value = true
+}
 
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
@@ -1368,6 +1376,7 @@ const isAnyModalOpen = computed(() => {
     showTest.value ||
     showStats.value ||
     showSchedulePanel.value ||
+    showSessionOccupants.value ||
     showErrorPassthrough.value ||
     showTLSFingerprintProfiles.value
   )

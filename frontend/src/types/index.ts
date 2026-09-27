@@ -1372,6 +1372,20 @@ export interface Account {
   parent_chatgpt_account_id?: string
 }
 
+export interface AccountSessionOccupant {
+  user_id: number | null
+  username?: string
+  email?: string
+  last_active: string
+  session_count: number
+}
+
+export interface AccountSessionOccupancy {
+  account_id: number
+  active_sessions: number
+  occupants: AccountSessionOccupant[]
+}
+
 // The admin account list may return this compact shape when lite=1. Detail
 // operations still use Account from /admin/accounts/:id.
 export type AccountListItem = Omit<Account, 'groups'>
@@ -2196,6 +2210,10 @@ export interface UserErrorRequest {
   category: string
   platform: string
   message: string
+  diagnosis_code: string
+  diagnosis_title: string
+  diagnosis_reason: string
+  diagnosis_suggestion: string
   key_name: string
   key_deleted: boolean
   client_ip?: string

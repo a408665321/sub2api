@@ -31,7 +31,8 @@ import type {
   GrokMediaEligibilityMode,
   GrokMediaEligibilityState,
   OpenCodeGoUsageSettings,
-  OpenCodeGoUsageState
+  OpenCodeGoUsageState,
+  AccountSessionOccupancy
 } from '@/types'
 
 /**
@@ -175,6 +176,11 @@ export async function listWithEtag(
  */
 export async function getById(id: number): Promise<Account> {
   const { data } = await apiClient.get<Account>(`/admin/accounts/${id}`)
+  return data
+}
+
+export async function getSessionOccupants(id: number): Promise<AccountSessionOccupancy> {
+  const { data } = await apiClient.get<AccountSessionOccupancy>(`/admin/accounts/${id}/session-occupants`)
   return data
 }
 
@@ -1136,6 +1142,7 @@ export const accountsAPI = {
   listWithEtag,
   getUpstreamBillingRatesWithEtag,
   getById,
+  getSessionOccupants,
   create,
   duplicate,
   update,
